@@ -142,6 +142,19 @@ DG::DG( const CProxy_Discretization& disc,
 //! \param[in] triinpoel Boundary-face connectivity
 // *****************************************************************************
 {
+  m_Nstoch_cells = 5;
+  m_Stoch_params_mesh.resize(m_Nstoch_cells);
+  m_u_stoch.resize(m_Nstoch_cells);
+
+  // Initialize stochastic mesh on [0,1]
+  std::cout << std::endl;
+  std::cout << "Stochastic mesh: " << std::endl;
+  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+    m_Stoch_params_mesh[st_cell_ind] = 1./m_Nstoch_cells*(st_cell_ind+0.5); // midpoints
+    std::cout << m_Stoch_params_mesh[st_cell_ind] << " ";
+  }
+  std::cout << std::endl;
+
   if (g_inputdeck.get< tag::cmd, tag::chare >() ||
       g_inputdeck.get< tag::cmd, tag::quiescence >())
     stateProxy.ckLocalBranch()->insert( "DG", thisIndex, CkMyPe(), Disc()->It(),
@@ -312,14 +325,36 @@ DG::box( tk::real v, const std::vector< tk::real >& )
   // Store user-defined box IC volume
   d->Boxvol() = v;
 
-  // Set initial conditions for all PDEs
-  g_dgpde[d->MeshId()].initialize( m_lhs, myGhosts()->m_inpoel,
-    myGhosts()->m_coord, m_boxelems, d->ElemBlockId(), m_u, d->T(),
-    myGhosts()->m_fd.Esuel().size()/4 );
-  g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
-    myGhosts()->m_fd.Esuel().size()/4 );
+  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
 
-  m_un = m_u;
+    // std::cout << "stochastic cell index " << st_cell_ind << std::endl;
+
+    // Set initial conditions for all PDEs
+    g_dgpde[d->MeshId()].initialize( m_lhs, myGhosts()->m_inpoel,
+      myGhosts()->m_coord, m_boxelems, d->ElemBlockId(), m_u, d->T(),
+      myGhosts()->m_fd.Esuel().size()/4 );
+    g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
+      myGhosts()->m_fd.Esuel().size()/4 );
+
+    // std::cout << "m_u.nunk() = " << m_u.nunk() << std::endl;
+    // std::cout << "m_u.nprop() = " << m_u.nprop() << std::endl;
+
+    // std::cout << "After initialize stochstic IC in DG" << std::endl;
+    for (std::size_t e=0; e<myGhosts()->m_nunk; ++e) {
+      // std::cout << "Element e = " << e << std::endl;
+      m_u(e,0) = m_u(e,0) + 0.1*m_Stoch_params_mesh[st_cell_ind]; 
+      // std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
+      // std::cout << "m_u(e,1) = " << m_u(e,1) << std::endl;
+      // std::cout << "m_u(e,2) = " << m_u(e,2) << std::endl;
+      // std::cout << "m_u(e,3) = " << m_u(e,3) << std::endl;
+      // std::cout << "m_u(e,4) = " << m_u(e,4) << std::endl;
+    }
+
+    m_un = m_u;
+
+    m_u_stoch[st_cell_ind] = m_un;
+
+  }
 
   // Output initial conditions to file (regardless of whether it was requested)
   startFieldOutput( CkCallback(CkIndex_DG::start(), thisProxy[thisIndex]) );
@@ -1361,6 +1396,7 @@ DG::solve( tk::real newdt )
 //! \param[in] newdt Size of this new time step
 // *****************************************************************************
 {
+
   // Enable SDAG wait for building the solution vector during the next stage
   thisProxy[ thisIndex ].wait4sol();
   thisProxy[ thisIndex ].wait4refine();
@@ -1369,6 +1405,14 @@ DG::solve( tk::real newdt )
   thisProxy[ thisIndex ].wait4nodalExtrema();
   thisProxy[ thisIndex ].wait4lim();
   thisProxy[ thisIndex ].wait4nod();
+
+  // std::cout << "thisIndex = " << thisIndex << std::endl;
+
+  // loop over stochastic cells
+  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+    // std::cout << "DG st_cell_ind = " << st_cell_ind << std::endl;
+    
+    m_u = m_u_stoch[st_cell_ind];
 
   auto d = Disc();
   const auto rdof = g_inputdeck.get< tag::rdof >();
@@ -1436,6 +1480,7 @@ DG::solve( tk::real newdt )
     }
   }
 
+  // Stochastic WENO reconstruction and integration over stochastic cell should happen here
   g_dgpde[d->MeshId()].rhs( physT, myGhosts()->m_geoFace, myGhosts()->m_geoElem,
     myGhosts()->m_fd, myGhosts()->m_inpoel, m_boxelems, myGhosts()->m_coord,
     m_u, m_p, m_ndof, d->Dt(), m_rhs );
@@ -1505,6 +1550,11 @@ DG::solve( tk::real newdt )
     if (!diag_computed) refine( std::vector< tk::real >( m_u.nprop(), 0.0 ) );
 
   }
+
+    m_u_stoch[st_cell_ind] = m_u; // update solution at st_cell_ind
+
+  } // end of loop over stochastic cells
+
 }
 
 void
@@ -2017,6 +2067,7 @@ DG::imex_integrate()
                        expl_rkcoef[3,2]*R_ex(u[1])+impl_rkcoef[3,2]*R_im(u[1]))
 
   ******************************************************************************/
+   
   auto d = Disc();
   const auto rdof = g_inputdeck.get< tag::rdof >();
   const auto ndof = g_inputdeck.get< tag::ndof >();

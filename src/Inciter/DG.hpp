@@ -281,6 +281,12 @@ class DG : public CBase_DG {
     //@}
 
   private:
+    //! Number of stochastic cells
+    int m_Nstoch_cells;
+    //! Stochastic mesh
+    std::vector<double> m_Stoch_params_mesh;
+    //! Stochastic solution
+    std::vector<tk::Fields> m_u_stoch;
     //! Discretization proxy
     CProxy_Discretization m_disc;
     //! Distributed Ghosts proxy
