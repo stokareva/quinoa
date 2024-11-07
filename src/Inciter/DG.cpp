@@ -336,14 +336,20 @@ DG::box( tk::real v, const std::vector< tk::real >& )
     g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
       myGhosts()->m_fd.Esuel().size()/4 );
 
+    tk::Fields geo = myGhosts()->m_geoElem;
+
     // std::cout << "m_u.nunk() = " << m_u.nunk() << std::endl;
     // std::cout << "m_u.nprop() = " << m_u.nprop() << std::endl;
 
     // std::cout << "After initialize stochstic IC in DG" << std::endl;
     for (std::size_t e=0; e<myGhosts()->m_nunk; ++e) {
-      // std::cout << "Element e = " << e << std::endl;
-      m_u(e,0) = m_u(e,0) + 0.1*m_Stoch_params_mesh[st_cell_ind]; 
-      // std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
+      std::cout << "Element e = " << e << std::endl;
+      std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
+      std::cout << "geoElem = " << geo(e,1) << " " << geo(e,2) << " " << geo(e,3) << std::endl;
+      if (geo(e,1) < 0.5) {
+         m_u(e,0) = m_u(e,0) + 0.1*m_Stoch_params_mesh[st_cell_ind]; 
+      }
+      std::cout << "m_u(e,0) stoch = " << m_u(e,0) << std::endl;
       // std::cout << "m_u(e,1) = " << m_u(e,1) << std::endl;
       // std::cout << "m_u(e,2) = " << m_u(e,2) << std::endl;
       // std::cout << "m_u(e,3) = " << m_u(e,3) << std::endl;
@@ -539,9 +545,6 @@ DG::extractFieldOutput(
   m_outmesh.triinpoel = triinpoel;
   m_outmesh.bface = bface;
   m_outmesh.nodeCommMap = nodeCommMap;
-
-  std::cout << "In DG::extractFieldOutput" << std::endl;
-  std::cout << "m_u(100,0) = " << m_u(100,0) << std::endl;
 
   const auto& inpoel = std::get< 0 >( chunk );
 
