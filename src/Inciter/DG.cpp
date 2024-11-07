@@ -384,6 +384,7 @@ DG::startFieldOutput( CkCallback c )
 //! \param[in] c Function to continue with after the write
 // *****************************************************************************
 {
+
   // No field output in benchmark mode or if field output frequency not hit
   if (g_inputdeck.get< tag::cmd, tag::benchmark >() || !fieldOutput()) {
 
@@ -538,6 +539,9 @@ DG::extractFieldOutput(
   m_outmesh.triinpoel = triinpoel;
   m_outmesh.bface = bface;
   m_outmesh.nodeCommMap = nodeCommMap;
+
+  std::cout << "In DG::extractFieldOutput" << std::endl;
+  std::cout << "m_u(100,0) = " << m_u(100,0) << std::endl;
 
   const auto& inpoel = std::get< 0 >( chunk );
 
@@ -1554,6 +1558,13 @@ DG::solve( tk::real newdt )
     m_u_stoch[st_cell_ind] = m_u; // update solution at st_cell_ind
 
   } // end of loop over stochastic cells
+
+  // compute the expected values
+  m_u = m_u_stoch[0];
+  for (int st_cell_ind = 1; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+    m_u += m_u_stoch[st_cell_ind];
+  }
+  m_u /= m_Nstoch_cells;
 
 }
 
