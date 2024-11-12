@@ -142,7 +142,8 @@ DG::DG( const CProxy_Discretization& disc,
 //! \param[in] triinpoel Boundary-face connectivity
 // *****************************************************************************
 {
-  m_Nstoch_cells = 5;
+  m_NRVs = 1;
+  m_Nstoch_cells = 10;
   m_Stoch_params_mesh.resize(m_Nstoch_cells);
   m_u_stoch.resize(m_Nstoch_cells);
 
@@ -343,13 +344,13 @@ DG::box( tk::real v, const std::vector< tk::real >& )
 
     // std::cout << "After initialize stochstic IC in DG" << std::endl;
     for (std::size_t e=0; e<myGhosts()->m_nunk; ++e) {
-      std::cout << "Element e = " << e << std::endl;
-      std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
-      std::cout << "geoElem = " << geo(e,1) << " " << geo(e,2) << " " << geo(e,3) << std::endl;
+      // std::cout << "Element e = " << e << std::endl;
+      // std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
+      // std::cout << "geoElem = " << geo(e,1) << " " << geo(e,2) << " " << geo(e,3) << std::endl;
       if (geo(e,1) < 0.5) {
          m_u(e,0) = m_u(e,0) + 0.1*m_Stoch_params_mesh[st_cell_ind]; 
       }
-      std::cout << "m_u(e,0) stoch = " << m_u(e,0) << std::endl;
+      // std::cout << "m_u(e,0) stoch = " << m_u(e,0) << std::endl;
       // std::cout << "m_u(e,1) = " << m_u(e,1) << std::endl;
       // std::cout << "m_u(e,2) = " << m_u(e,2) << std::endl;
       // std::cout << "m_u(e,3) = " << m_u(e,3) << std::endl;
@@ -1413,62 +1414,10 @@ DG::solve( tk::real newdt )
   thisProxy[ thisIndex ].wait4lim();
   thisProxy[ thisIndex ].wait4nod();
 
-  // std::cout << "thisIndex = " << thisIndex << std::endl;
-
-  // loop over stochastic cells
-  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
-    // std::cout << "DG st_cell_ind = " << st_cell_ind << std::endl;
-    
-    m_u = m_u_stoch[st_cell_ind];
-
-  auto d = Disc();
-  const auto rdof = g_inputdeck.get< tag::rdof >();
-  const auto ndof = g_inputdeck.get< tag::ndof >();
-  const auto neq = m_u.nprop()/rdof;
-
+  auto d = Disc(); // ST
   // Set new time step size
-  if (m_stage == 0) d->setdt( newdt );
-
-  const auto pref = g_inputdeck.get< tag::pref, tag::pref >();
-  if (pref && m_stage == 0)
-  {
-    // When the element are coarsened, high order terms should be zero
-    for(std::size_t e = 0; e < myGhosts()->m_nunk; e++)
-    {
-      const auto ncomp= m_u.nprop()/rdof;
-      if(m_ndof[e] == 1)
-      {
-        for (std::size_t c=0; c<ncomp; ++c)
-        {
-          auto mark = c*rdof;
-          m_u(e, mark+1) = 0.0;
-          m_u(e, mark+2) = 0.0;
-          m_u(e, mark+3) = 0.0;
-        }
-      } else if(m_ndof[e] == 4)
-      {
-        for (std::size_t c=0; c<ncomp; ++c)
-        {
-          auto mark = c*ndof;
-          m_u(e, mark+4) = 0.0;
-          m_u(e, mark+5) = 0.0;
-          m_u(e, mark+6) = 0.0;
-          m_u(e, mark+7) = 0.0;
-          m_u(e, mark+8) = 0.0;
-          m_u(e, mark+9) = 0.0;
-        }
-      }
-    }
-  }
-
-  // Update Un
-  if (m_stage == 0) m_un = m_u;
-
-  // Explicit or IMEX
-  const auto imex_runge_kutta = g_inputdeck.get< tag::imex_runge_kutta >();
-
-  // physical time at time-stage for computing exact source terms
-  tk::real physT(d->T());
+  if (m_stage == 0) d->setdt( newdt ); // ST
+  tk::real physT(d->T()); // ST
   if (m_stage == 1) {
     physT += d->Dt();
   }
@@ -1476,67 +1425,142 @@ DG::solve( tk::real newdt )
     physT += 0.5*d->Dt();
   }
 
-  if (imex_runge_kutta) {
-    if (m_stage == 0)
+  // std::cout << "m_stage = " << m_stage << std::endl;
+
+  // loop over stochastic cells
+  // m_Nstoch_cells = 1;
+  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+    // std::cout << "DG st_cell_ind = " << st_cell_ind << std::endl; 
+    // std::cout << "m_stage = " << m_stage << std::endl; 
+
+    // std::cout << "thisIndex = " << thisIndex << std::endl;
+    
+    m_u = m_u_stoch[st_cell_ind];
+
+    // auto d = Disc(); // ST
+    const auto rdof = g_inputdeck.get< tag::rdof >();
+    const auto ndof = g_inputdeck.get< tag::ndof >();
+    const auto neq = m_u.nprop()/rdof;
+
+    // // Set new time step size   // ST
+    // if (m_stage == 0) d->setdt( newdt );
+
+    const auto pref = g_inputdeck.get< tag::pref, tag::pref >();
+    if (pref && m_stage == 0)
     {
-      // Save previous rhs
-      m_rhsprev = m_rhs;
-      // Initialize m_stiffrhs to zero
-      m_stiffrhs.fill(0.0);
-      m_stiffrhsprev.fill(0.0);
+      // When the element are coarsened, high order terms should be zero
+      for(std::size_t e = 0; e < myGhosts()->m_nunk; e++)
+      {
+        const auto ncomp= m_u.nprop()/rdof;
+        if(m_ndof[e] == 1)
+        {
+          for (std::size_t c=0; c<ncomp; ++c)
+          {
+            auto mark = c*rdof;
+            m_u(e, mark+1) = 0.0;
+            m_u(e, mark+2) = 0.0;
+            m_u(e, mark+3) = 0.0;
+          }
+        } else if(m_ndof[e] == 4)
+        {
+          for (std::size_t c=0; c<ncomp; ++c)
+          {
+            auto mark = c*ndof;
+            m_u(e, mark+4) = 0.0;
+            m_u(e, mark+5) = 0.0;
+            m_u(e, mark+6) = 0.0;
+            m_u(e, mark+7) = 0.0;
+            m_u(e, mark+8) = 0.0;
+            m_u(e, mark+9) = 0.0;
+          }
+        }
+      }
     }
-  }
 
-  // Stochastic WENO reconstruction and integration over stochastic cell should happen here
-  g_dgpde[d->MeshId()].rhs( physT, myGhosts()->m_geoFace, myGhosts()->m_geoElem,
-    myGhosts()->m_fd, myGhosts()->m_inpoel, m_boxelems, myGhosts()->m_coord,
-    m_u, m_p, m_ndof, d->Dt(), m_rhs );
+    // Update Un
+    if (m_stage == 0) m_un = m_u;
 
-  if (!imex_runge_kutta) {
-    // Explicit time-stepping using RK3 to discretize time-derivative
+    // Explicit or IMEX
+    const auto imex_runge_kutta = g_inputdeck.get< tag::imex_runge_kutta >();
+
+    // physical time at time-stage for computing exact source terms
+    // tk::real physT(d->T()); // ST
+    // if (m_stage == 1) {
+    //   physT += d->Dt();
+    // }
+    // else if (m_stage == 2) {
+    //   physT += 0.5*d->Dt();
+    // }
+
+    if (imex_runge_kutta) {
+      if (m_stage == 0)
+      {
+        // Save previous rhs
+        m_rhsprev = m_rhs;
+        // Initialize m_stiffrhs to zero
+        m_stiffrhs.fill(0.0);
+        m_stiffrhsprev.fill(0.0);
+      }
+    }
+
+    // Stochastic WENO reconstruction and integration over stochastic cell should happen here
+    g_dgpde[d->MeshId()].rhs( physT, myGhosts()->m_geoFace, myGhosts()->m_geoElem,
+      myGhosts()->m_fd, myGhosts()->m_inpoel, m_boxelems, myGhosts()->m_coord,
+      m_u, m_p, m_ndof, d->Dt(), m_rhs );
+
+    if (!imex_runge_kutta) {
+      // Explicit time-stepping using RK3 to discretize time-derivative
+      for(std::size_t e=0; e<myGhosts()->m_nunk; ++e)
+        for(std::size_t c=0; c<neq; ++c)
+        {
+          for (std::size_t k=0; k<m_numEqDof[c]; ++k)
+          {
+            auto rmark = c*rdof+k;
+            auto mark = c*ndof+k;
+            m_u(e, rmark) =  rkcoef[0][m_stage] * m_un(e, rmark)
+              + rkcoef[1][m_stage] * ( m_u(e, rmark)
+                + d->Dt() * m_rhs(e, mark)/m_lhs(e, mark) );
+            if(fabs(m_u(e, rmark)) < 1e-16)
+              m_u(e, rmark) = 0;
+          }
+        }
+    }
+    else {
+      // Implicit-Explicit time-stepping using RK3 to discretize time-derivative
+      DG::imex_integrate();
+    }
+
     for(std::size_t e=0; e<myGhosts()->m_nunk; ++e)
       for(std::size_t c=0; c<neq; ++c)
       {
-        for (std::size_t k=0; k<m_numEqDof[c]; ++k)
-        {
-          auto rmark = c*rdof+k;
-          auto mark = c*ndof+k;
-          m_u(e, rmark) =  rkcoef[0][m_stage] * m_un(e, rmark)
-            + rkcoef[1][m_stage] * ( m_u(e, rmark)
-              + d->Dt() * m_rhs(e, mark)/m_lhs(e, mark) );
-          if(fabs(m_u(e, rmark)) < 1e-16)
-            m_u(e, rmark) = 0;
+        // zero out unused/reconstructed dofs of equations using reduced dofs
+        // (see DGMultiMat::numEquationDofs())
+        if (m_numEqDof[c] < rdof) {
+          for (std::size_t k=m_numEqDof[c]; k<rdof; ++k)
+          {
+            auto rmark = c*rdof+k;
+            m_u(e, rmark) = 0.0;
+          }
         }
       }
-  }
-  else {
-    // Implicit-Explicit time-stepping using RK3 to discretize time-derivative
-    DG::imex_integrate();
-  }
 
-  for(std::size_t e=0; e<myGhosts()->m_nunk; ++e)
-    for(std::size_t c=0; c<neq; ++c)
-    {
-      // zero out unused/reconstructed dofs of equations using reduced dofs
-      // (see DGMultiMat::numEquationDofs())
-      if (m_numEqDof[c] < rdof) {
-        for (std::size_t k=m_numEqDof[c]; k<rdof; ++k)
-        {
-          auto rmark = c*rdof+k;
-          m_u(e, rmark) = 0.0;
-        }
-      }
+    // Update primitives based on the evolved solution
+    g_dgpde[d->MeshId()].updateInterfaceCells( m_u,
+      myGhosts()->m_fd.Esuel().size()/4, m_ndof );
+    g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
+      myGhosts()->m_fd.Esuel().size()/4 );
+    if (!g_inputdeck.get< tag::accuracy_test >()) {
+      g_dgpde[d->MeshId()].cleanTraceMaterial( physT, myGhosts()->m_geoElem, m_u,
+        m_p, myGhosts()->m_fd.Esuel().size()/4 );
     }
 
-  // Update primitives based on the evolved solution
-  g_dgpde[d->MeshId()].updateInterfaceCells( m_u,
-    myGhosts()->m_fd.Esuel().size()/4, m_ndof );
-  g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
-    myGhosts()->m_fd.Esuel().size()/4 );
-  if (!g_inputdeck.get< tag::accuracy_test >()) {
-    g_dgpde[d->MeshId()].cleanTraceMaterial( physT, myGhosts()->m_geoElem, m_u,
-      m_p, myGhosts()->m_fd.Esuel().size()/4 );
-  }
+    m_u_stoch[st_cell_ind] = m_u; // update solution at st_cell_ind
+
+    // std::cout << "st_cell_ind = " << st_cell_ind << ", physT = " << physT << std::endl;
+
+  } // end of loop over stochastic cells
+
+  m_u = m_u_stoch[0]; // for diagnostics --> must be something else in the future
 
   if (m_stage < 2) {
 
@@ -1557,10 +1581,6 @@ DG::solve( tk::real newdt )
     if (!diag_computed) refine( std::vector< tk::real >( m_u.nprop(), 0.0 ) );
 
   }
-
-    m_u_stoch[st_cell_ind] = m_u; // update solution at st_cell_ind
-
-  } // end of loop over stochastic cells
 
   // compute the expected values
   m_u = m_u_stoch[0];

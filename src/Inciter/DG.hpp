@@ -281,6 +281,8 @@ class DG : public CBase_DG {
     //@}
 
   private:
+    //! Number of random variables
+    int m_NRVs;
     //! Number of stochastic cells
     int m_Nstoch_cells;
     //! Stochastic mesh
