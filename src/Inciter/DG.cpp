@@ -1582,13 +1582,24 @@ DG::solve( tk::real newdt )
 
   }
 
-  // compute the expected values
-  m_u = m_u_stoch[0];
-  for (int st_cell_ind = 1; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
-    m_u += m_u_stoch[st_cell_ind];
+  /************************************/
+  // TODO : Include proper weights instead of assuming uniform distribution
+  
+  // Compute expected values
+  auto m_u_expected = m_u - m_u; // fixme?
+  for (const auto &entry : m_u_stoch) {
+    m_u_expected += entry;
   }
-  m_u /= m_Nstoch_cells;
+  m_u_expected *= 1. / m_u_stoch.size();
 
+  // Compute variance 
+  auto m_u_variance = m_u - m_u; // fixme?
+  for (const auto &entry : m_u_stoch) {
+    m_u_variance += (entry - m_u_expected) * (entry - m_u_expected);
+  }
+  m_u_variance *= 1. / m_u_stoch.size();
+  /************************************/
+  m_u = m_u_expected;
 }
 
 void
