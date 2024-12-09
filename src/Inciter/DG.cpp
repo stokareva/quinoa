@@ -72,69 +72,40 @@ extern tk::CProxy_ChareStateCollector stateProxy;
 
 using inciter::DG;
 
-DG::DG( const CProxy_Discretization& disc,
-        const CProxy_Ghosts& ghostsproxy,
-        const std::map< int, std::vector< std::size_t > >& bface,
-        const std::map< int, std::vector< std::size_t > >& /* bnode */,
-        const std::vector< std::size_t >& triinpoel ) :
-  m_disc( disc ),
-  m_ghosts( ghostsproxy ),
-  m_ndof_NodalExtrm( 3 ), // for the first order derivatives in 3 directions
-  m_nsol( 0 ),
-  m_ninitsol( 0 ),
-  m_nlim( 0 ),
-  m_nnod( 0 ),
-  m_nrefine( 0 ),
-  m_nsmooth( 0 ),
-  m_nreco( 0 ),
-  m_nnodalExtrema( 0 ),
-  m_nstiffeq( g_dgpde[Disc()->MeshId()].nstiffeq() ),
-  m_nnonstiffeq( g_dgpde[Disc()->MeshId()].nnonstiffeq() ),
-  m_u( Disc()->Inpoel().size()/4,
-       g_inputdeck.get< tag::rdof >()*
-       g_inputdeck.get< tag::ncomp >() ),
-  m_un( m_u.nunk(), m_u.nprop() ),
-  m_p( m_u.nunk(), g_inputdeck.get< tag::rdof >()*
-    g_dgpde[Disc()->MeshId()].nprim() ),
-  m_lhs( m_u.nunk(),
-         g_inputdeck.get< tag::ndof >()*
-         g_inputdeck.get< tag::ncomp >() ),
-  m_rhs( m_u.nunk(), m_lhs.nprop() ),
-  m_rhsprev( m_u.nunk(), m_lhs.nprop() ),
-  m_stiffrhs( m_u.nunk(), g_inputdeck.get< tag::ndof >()*
-              g_dgpde[Disc()->MeshId()].nstiffeq() ),
-  m_stiffrhsprev( m_u.nunk(), g_inputdeck.get< tag::ndof >()*
-                  g_dgpde[Disc()->MeshId()].nstiffeq() ),
-  m_stiffEqIdx( g_dgpde[Disc()->MeshId()].nstiffeq() ),
-  m_nonStiffEqIdx( g_dgpde[Disc()->MeshId()].nnonstiffeq() ),
-  m_mtInv(
-    tk::invMassMatTaylorRefEl(g_inputdeck.get< tag::rdof >()) ),
-  m_uNodalExtrm(),
-  m_pNodalExtrm(),
-  m_uNodalExtrmc(),
-  m_pNodalExtrmc(),
-  m_npoin( Disc()->Coord()[0].size() ),
-  m_diag(),
-  m_stage( 0 ),
-  m_ndof(),
-  m_numEqDof(),
-  m_uc(),
-  m_pc(),
-  m_ndofc(),
-  m_initial( 1 ),
-  m_uElemfields( m_u.nunk(),
-                 g_inputdeck.get< tag::ncomp >() ),
-  m_pElemfields( m_u.nunk(),
-                 m_p.nprop() / g_inputdeck.get< tag::rdof >() ),
-  m_uNodefields( m_npoin,
-                 g_inputdeck.get< tag::ncomp >() ),
-  m_pNodefields( m_npoin,
-                 m_p.nprop() / g_inputdeck.get< tag::rdof >() ),
-  m_uNodefieldsc(),
-  m_pNodefieldsc(),
-  m_outmesh(),
-  m_boxelems(),
-  m_shockmarker(m_u.nunk(), 1)
+DG::DG(const CProxy_Discretization &disc, const CProxy_Ghosts &ghostsproxy,
+       const std::map<int, std::vector<std::size_t>> &bface,
+       const std::map<int, std::vector<std::size_t>> & /* bnode */,
+       const std::vector<std::size_t> &triinpoel)
+    : m_disc(disc), m_ghosts(ghostsproxy),
+      m_ndof_NodalExtrm(3), // for the first order derivatives in 3 directions
+      m_nsol(0), m_ninitsol(0), m_nlim(0), m_nnod(0), m_nrefine(0),
+      m_nsmooth(0), m_nreco(0), m_nnodalExtrema(0),
+      m_nstiffeq(g_dgpde[Disc()->MeshId()].nstiffeq()),
+      m_nnonstiffeq(g_dgpde[Disc()->MeshId()].nnonstiffeq()),
+      m_u(Disc()->Inpoel().size() / 4,
+          g_inputdeck.get<tag::rdof>() * g_inputdeck.get<tag::ncomp>()),
+      m_un(m_u.nunk(), m_u.nprop()),
+      m_p(m_u.nunk(),
+          g_inputdeck.get<tag::rdof>() * g_dgpde[Disc()->MeshId()].nprim()),
+      m_lhs(m_u.nunk(),
+            g_inputdeck.get<tag::ndof>() * g_inputdeck.get<tag::ncomp>()),
+      m_rhs(m_u.nunk(), m_lhs.nprop()), m_rhsprev(m_u.nunk(), m_lhs.nprop()),
+      m_stiffrhs(m_u.nunk(), g_inputdeck.get<tag::ndof>() *
+                                 g_dgpde[Disc()->MeshId()].nstiffeq()),
+      m_stiffrhsprev(m_u.nunk(), g_inputdeck.get<tag::ndof>() *
+                                     g_dgpde[Disc()->MeshId()].nstiffeq()),
+      m_stiffEqIdx(g_dgpde[Disc()->MeshId()].nstiffeq()),
+      m_nonStiffEqIdx(g_dgpde[Disc()->MeshId()].nnonstiffeq()),
+      m_mtInv(tk::invMassMatTaylorRefEl(g_inputdeck.get<tag::rdof>())),
+      m_uNodalExtrm(), m_pNodalExtrm(), m_uNodalExtrmc(), m_pNodalExtrmc(),
+      m_npoin(Disc()->Coord()[0].size()), m_diag(), m_stage(0), m_ndof(),
+      m_numEqDof(), m_uc(), m_pc(), m_ndofc(), m_initial(1),
+      m_uElemfields(m_u.nunk(), g_inputdeck.get<tag::ncomp>()),
+      m_pElemfields(m_u.nunk(), m_p.nprop() / g_inputdeck.get<tag::rdof>()),
+      m_uNodefields(m_npoin, g_inputdeck.get<tag::ncomp>()),
+      m_pNodefields(m_npoin, m_p.nprop() / g_inputdeck.get<tag::rdof>()),
+      m_uNodefieldsc(), m_pNodefieldsc(), m_outmesh(), m_boxelems(),
+      m_shockmarker(m_u.nunk(), 1)
 // *****************************************************************************
 //  Constructor
 //! \param[in] disc Discretization proxy
@@ -142,19 +113,88 @@ DG::DG( const CProxy_Discretization& disc,
 //! \param[in] triinpoel Boundary-face connectivity
 // *****************************************************************************
 {
-  m_NRVs = 1;
-  m_Nstoch_cells = 10;
-  m_Stoch_params_mesh.resize(m_Nstoch_cells);
-  m_u_stoch.resize(m_Nstoch_cells);
+  /***************************************************************************/
+  /*        For Stochastic Finite Volume Method (SFVM)                       */
 
-  // Initialize stochastic mesh on [0,1]
-  std::cout << std::endl;
-  std::cout << "Stochastic mesh: " << std::endl;
-  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
-    m_Stoch_params_mesh[st_cell_ind] = 1./m_Nstoch_cells*(st_cell_ind+0.5); // midpoints
-    std::cout << m_Stoch_params_mesh[st_cell_ind] << " ";
+  /*
+  * Step 1: Allocate and resize appropriate quantities. Then create a grid from
+  * stochastic variable meshes. Ideally, we would like that each stochastic
+  * variable has a different sized mesh, but will assume the same for now.
+  */
+  m_stoch_num_vars = 1;
+  m_stoch_var_grid.resize(m_stoch_num_vars);
+
+  // Lambda function to create stochastic grid from each stochastic varaible
+  const auto createStochasticGrid =
+      [&](std::vector<std::vector<double>> &stochasticMesh) {
+        for (unsigned int d = 0; d < m_stoch_num_vars; ++d) {
+#ifdef DEBUG_SFVM
+          std::cout << "\nStochastic mesh #" << d << ": \n";
+#endif
+          // This is where we assume same size
+          stochasticMesh[d].resize(10);
+
+          int numCells = stochasticMesh[d].size();
+          const double cellSize = 1.0 / numCells;
+#ifdef DEBUG_SFVM
+          std::cout << "number of stochastic cells = " << numCells
+                    << " for stochastiv variable " << d << std::endl;
+#endif
+
+          for (unsigned int cellIndex = 0; cellIndex < numCells; ++cellIndex) {
+            stochasticMesh[d][cellIndex] =
+                cellSize * (cellIndex + 0.5); // midpoints
+#ifdef DEBUG_SFVM
+            std::cout << stochasticMesh[d][cellIndex] << " ";
+#endif
+          }
+          std::cout << std::endl;
+        }
+      };
+
+  // Call the lambda function to initialize stochastic meshes on [0, 1]
+  createStochasticGrid(m_stoch_var_grid);
+
+  // Finally we resize the solution variable and flattened stochastic mesh
+  m_stoch_num_cells = std::accumulate(
+      m_stoch_var_grid.begin(), m_stoch_var_grid.end(), 0,
+      [](int sum, const auto &vec) { return sum + vec.size(); });
+
+#ifdef DEBUG_SFVM
+  std::cout << "Total stochastic cells: " << m_stoch_num_cells << std::endl;
+#endif
+
+  m_u_stoch.resize(m_stoch_num_cells);
+  m_stoch_mesh.resize(m_stoch_num_cells);
+  /* --------- End Step 1 ------------- */
+
+  /*
+   * Step 2: Create a "global / flattened" stochastic mesh.
+   * I don't think we need to do this, instead we can just create a separate
+   * function that gives us what we want from the grid. 
+   */
+
+  // Fill in flattened m_stoch_mesh
+  for (int vec_idx = 0; vec_idx < m_stoch_var_grid.size(); ++vec_idx) {
+    for (int local_idx = 0; local_idx < m_stoch_var_grid[vec_idx].size();
+         ++local_idx) {
+      const int global_idx = toGlobalIndex(m_stoch_var_grid, vec_idx, local_idx);
+      m_stoch_mesh[global_idx] = m_stoch_var_grid[vec_idx][local_idx];
+    }
   }
-  std::cout << std::endl;
+
+  // Test the flattened mesh
+#ifdef DEBUG_SFVM
+  std::cout << "Ouputting m_stoch_mesh values: ";
+  for (const auto &value : m_stoch_mesh) {
+    std::cout << value << " ";
+  }
+  std::cout << '\n';
+#endif
+
+  /* --------- End Step 2 ------------- */
+  
+  /***********************************************************************/
 
   if (g_inputdeck.get< tag::cmd, tag::chare >() ||
       g_inputdeck.get< tag::cmd, tag::quiescence >())
@@ -326,41 +366,39 @@ DG::box( tk::real v, const std::vector< tk::real >& )
   // Store user-defined box IC volume
   d->Boxvol() = v;
 
-  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+  // Create lambda function to modify initial condition
+  // -------------
+  // 
 
-    // std::cout << "stochastic cell index " << st_cell_ind << std::endl;
+  for (unsigned int stoch_cellIndex = 0; stoch_cellIndex < m_stoch_mesh.size();
+       ++stoch_cellIndex) {
+
+    // Get vector index and local index
+    const auto &[v_idx, l_idx] = toLocalIndex(m_stoch_var_grid, stoch_cellIndex);
 
     // Set initial conditions for all PDEs
-    g_dgpde[d->MeshId()].initialize( m_lhs, myGhosts()->m_inpoel,
-      myGhosts()->m_coord, m_boxelems, d->ElemBlockId(), m_u, d->T(),
-      myGhosts()->m_fd.Esuel().size()/4 );
-    g_dgpde[d->MeshId()].updatePrimitives( m_u, m_lhs, myGhosts()->m_geoElem, m_p,
-      myGhosts()->m_fd.Esuel().size()/4 );
+    g_dgpde[d->MeshId()].initialize(
+        m_lhs, myGhosts()->m_inpoel, myGhosts()->m_coord, m_boxelems,
+        d->ElemBlockId(), m_u, d->T(), myGhosts()->m_fd.Esuel().size() / 4);
+    g_dgpde[d->MeshId()].updatePrimitives(m_u, m_lhs, myGhosts()->m_geoElem,
+                                          m_p,
+                                          myGhosts()->m_fd.Esuel().size() / 4);
 
     tk::Fields geo = myGhosts()->m_geoElem;
 
-    // std::cout << "m_u.nunk() = " << m_u.nunk() << std::endl;
-    // std::cout << "m_u.nprop() = " << m_u.nprop() << std::endl;
-
-    // std::cout << "After initialize stochstic IC in DG" << std::endl;
-    for (std::size_t e=0; e<myGhosts()->m_nunk; ++e) {
-      // std::cout << "Element e = " << e << std::endl;
-      // std::cout << "m_u(e,0) = " << m_u(e,0) << std::endl;
-      // std::cout << "geoElem = " << geo(e,1) << " " << geo(e,2) << " " << geo(e,3) << std::endl;
-      if (geo(e,1) < 0.5) {
-         m_u(e,0) = m_u(e,0) + 0.1*m_Stoch_params_mesh[st_cell_ind]; 
+    for (std::size_t e = 0; e < myGhosts()->m_nunk; ++e) {
+      // Modify initial condition for density with stochoastic parameter
+      if (v_idx == 0) {
+        // Think about making the 0.5 a random variable
+        if (geo(e, 1) < 0.5) {
+          m_u(e, 0) = m_u(e, 0) + 0.1 * m_stoch_mesh[stoch_cellIndex];
+        }
       }
-      // std::cout << "m_u(e,0) stoch = " << m_u(e,0) << std::endl;
-      // std::cout << "m_u(e,1) = " << m_u(e,1) << std::endl;
-      // std::cout << "m_u(e,2) = " << m_u(e,2) << std::endl;
-      // std::cout << "m_u(e,3) = " << m_u(e,3) << std::endl;
-      // std::cout << "m_u(e,4) = " << m_u(e,4) << std::endl;
     }
 
     m_un = m_u;
 
-    m_u_stoch[st_cell_ind] = m_un;
-
+    m_u_stoch[stoch_cellIndex] = m_un;
   }
 
   // Output initial conditions to file (regardless of whether it was requested)
@@ -1427,15 +1465,15 @@ DG::solve( tk::real newdt )
 
   // std::cout << "m_stage = " << m_stage << std::endl;
 
-  // loop over stochastic cells
-  // m_Nstoch_cells = 1;
-  for (int st_cell_ind = 0; st_cell_ind < m_Nstoch_cells; st_cell_ind++) {
+  /* FIX ME ??? */
+  /* loop over stochastic cells */
+  for (int stoch_cellIndex = 0; stoch_cellIndex < m_stoch_mesh.size(); stoch_cellIndex++) {
     // std::cout << "DG st_cell_ind = " << st_cell_ind << std::endl; 
     // std::cout << "m_stage = " << m_stage << std::endl; 
 
     // std::cout << "thisIndex = " << thisIndex << std::endl;
     
-    m_u = m_u_stoch[st_cell_ind];
+    m_u = m_u_stoch[stoch_cellIndex];
 
     // auto d = Disc(); // ST
     const auto rdof = g_inputdeck.get< tag::rdof >();
@@ -1554,12 +1592,13 @@ DG::solve( tk::real newdt )
         m_p, myGhosts()->m_fd.Esuel().size()/4 );
     }
 
-    m_u_stoch[st_cell_ind] = m_u; // update solution at st_cell_ind
+    m_u_stoch[stoch_cellIndex] = m_u; // update solution at st_cell_ind
 
     // std::cout << "st_cell_ind = " << st_cell_ind << ", physT = " << physT << std::endl;
 
   } // end of loop over stochastic cells
 
+  /* FIXME? */
   m_u = m_u_stoch[0]; // for diagnostics --> must be something else in the future
 
   if (m_stage < 2) {
@@ -1582,24 +1621,30 @@ DG::solve( tk::real newdt )
 
   }
 
-  /************************************/
+  /***************************************************************************/
+  /*        For Stochastic Finite Volume Method (SFVM)                       */
+
+  /* Calculate expectation value and variance */
   // TODO : Include proper weights instead of assuming uniform distribution
-  
+
   // Compute expected values
-  auto m_u_expected = m_u - m_u; // fixme?
+  auto m_u_expected = m_u - m_u; // FIXME?
   for (const auto &entry : m_u_stoch) {
     m_u_expected += entry;
   }
   m_u_expected *= 1. / m_u_stoch.size();
+  m_u = m_u_expected;
 
+#if 0 
   // Compute variance 
   auto m_u_variance = m_u - m_u; // fixme?
-  for (const auto &entry : m_u_stoch) {
+  for (const auto &entry : m_u_stoch[0]) {
     m_u_variance += (entry - m_u_expected) * (entry - m_u_expected);
   }
-  m_u_variance *= 1. / m_u_stoch.size();
+  m_u_variance *= 1. / m_u_stoch[0].size();
   /************************************/
-  m_u = m_u_expected;
+ 
+#endif
 }
 
 void

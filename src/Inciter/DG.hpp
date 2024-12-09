@@ -282,13 +282,37 @@ class DG : public CBase_DG {
 
   private:
     //! Number of random variables
-    int m_NRVs;
-    //! Number of stochastic cells
-    int m_Nstoch_cells;
-    //! Stochastic mesh
-    std::vector<double> m_Stoch_params_mesh;
+    unsigned int m_stoch_num_vars;
+    //! Number of global stochastic cells
+    unsigned int m_stoch_num_cells;
+    //! Vector of vector for stochastic grid 
+    std::vector<std::vector<double>> m_stoch_var_grid; 
+    //! (Flattened) Stochastic mesh
+    std::vector<double> m_stoch_mesh;
     //! Stochastic solution
     std::vector<tk::Fields> m_u_stoch;
+    //! Helper function 1
+    const int toGlobalIndex(const auto &StochGrid, const int &vec_idx,
+                            const int &local_idx) const {
+      int global_index = 0;
+      for (int i = 0; i < vec_idx; ++i) {
+        global_index += StochGrid[i].size();
+      }
+      return global_index + local_idx;
+    }
+    //! Helper function 2
+    const std::pair<int, int> toLocalIndex(const auto &StochGrid,
+                                           const int &global_index) const {
+      int size = 0;
+      for (int i = 0; i < StochGrid.size(); ++i) {
+        if (global_index < size + StochGrid[i].size()) {
+          return {i, global_index - size};
+        }
+        size += StochGrid[i].size();
+      }
+      throw std::out_of_range("Global index out of bounds");
+    }
+
     //! Discretization proxy
     CProxy_Discretization m_disc;
     //! Distributed Ghosts proxy
