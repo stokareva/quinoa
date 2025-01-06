@@ -34,6 +34,8 @@
 #include "ChareStateCollector.hpp"
 #include "PDE/MultiMat/MultiMatIndexing.hpp"
 
+#define DEBUG_SFVM
+
 namespace inciter {
 
 extern ctr::InputDeck g_inputdeck;
@@ -117,83 +119,110 @@ DG::DG(const CProxy_Discretization &disc, const CProxy_Ghosts &ghostsproxy,
   /*        For Stochastic Finite Volume Method (SFVM)                       */
 
   /*
-  * Step 1: Allocate and resize appropriate quantities. Then create a grid from
-  * stochastic variable meshes. Ideally, we would like that each stochastic
-  * variable has a different sized mesh, but will assume the same for now.
-  */
+   * Step 1: Allocate and resize appropriate quantities. Then create a grid from
+   * stochastic variable meshes. Ideally, we would like that each stochastic
+   * variable has a different sized mesh, but will assume the same for now.
+   */
   m_stoch_num_vars = 1;
-  m_stoch_var_grid.resize(m_stoch_num_vars);
+  m_stoch_var_meshes.resize(m_stoch_num_vars);
 
-  // Lambda function to create stochastic grid from each stochastic varaible
-  const auto createStochasticGrid =
-      [&](std::vector<std::vector<double>> &stochasticMesh) {
+  // Lambda function to create mesh for each stochastic variable
+  const auto createStochasticMeshes =
+      [&](std::vector<std::vector<double>> &meshes) {
         for (unsigned int d = 0; d < m_stoch_num_vars; ++d) {
 #ifdef DEBUG_SFVM
           std::cout << "\nStochastic mesh #" << d << ": \n";
 #endif
           // This is where we assume same size
-          stochasticMesh[d].resize(10);
+          meshes[d].resize(10);
 
-          int numCells = stochasticMesh[d].size();
-          const double cellSize = 1.0 / numCells;
+          int numCells = meshes[d].size();
+
+          double lowerBound = 0.0;
+          double upperBound = 1.0;
+
+          // Change user-defined bound for specific stochastic parameter
+          switch (d) {
+          case 0:
+            lowerBound = 0.45;
+            upperBound = 0.55;
+            break;
+          default:
+            lowerBound = 0.0;
+            upperBound = 1.0;
+          }
+
+          const double cellSize = (upperBound - lowerBound) / numCells;
+
 #ifdef DEBUG_SFVM
           std::cout << "number of stochastic cells = " << numCells
                     << " for stochastiv variable " << d << std::endl;
 #endif
 
           for (unsigned int cellIndex = 0; cellIndex < numCells; ++cellIndex) {
-            stochasticMesh[d][cellIndex] =
-                cellSize * (cellIndex + 0.5); // midpoints
+            meshes[d][cellIndex] =
+                lowerBound + cellSize * (cellIndex + 0.5); // midpoints
 #ifdef DEBUG_SFVM
-            std::cout << stochasticMesh[d][cellIndex] << " ";
+            std::cout << meshes[d][cellIndex] << " ";
 #endif
           }
           std::cout << std::endl;
         }
       };
 
-  // Call the lambda function to initialize stochastic meshes on [0, 1]
-  createStochasticGrid(m_stoch_var_grid);
+  // Call lambda function to create stochastic meshes
+  createStochasticMeshes(m_stoch_var_meshes);
 
-  // Finally we resize the solution variable and flattened stochastic mesh
-  m_stoch_num_cells = std::accumulate(
-      m_stoch_var_grid.begin(), m_stoch_var_grid.end(), 0,
-      [](int sum, const auto &vec) { return sum + vec.size(); });
+  // Lambda function to create actual stochastic grid from stochastic meshes
+  const auto generate_stoch_grid = [&](std::vector<std::vector<double>> &meshes) {
+    std::vector<std::vector<double>> result;
+
+    // Calculate the total number of combinations (global cells)
+    size_t total_cells = 1;
+    std::vector<size_t> strides(meshes.size());
+    for (size_t i = 0; i < meshes.size(); ++i) {
+      strides[i] = total_cells; // Store the stride for each dimension
+      total_cells *= meshes[i].size();
+    }
+
+    // Compute cartesian product
+    for (size_t global_index = 0; global_index < total_cells; ++global_index) {
+      std::vector<double> cell(meshes.size());
+      size_t current_index = global_index;
+
+      for (size_t dim = 0; dim < meshes.size(); ++dim) {
+        size_t local_index =
+            (current_index / strides[dim]) % meshes[dim].size();
+        cell[dim] = meshes[dim][local_index];
+      }
+
+      result.push_back(cell);
+    }
+
+    return result;
+  };
+
+  // Call the lambda function above and get num of stochastic cells
+  m_stochastic_grid = generate_stoch_grid(m_stoch_var_meshes);
+  m_stoch_num_cells = m_stochastic_grid.size();
+
+  // Allocate m_u_stoch
+  m_u_stoch.resize(m_stoch_num_cells);
 
 #ifdef DEBUG_SFVM
-  std::cout << "Total stochastic cells: " << m_stoch_num_cells << std::endl;
+  // Print the result
+  std::cout << " This is stochastic grid size = " << m_stochastic_grid.size()
+            << std::endl;
+  for (const auto &cell : m_stochastic_grid) {
+    for (const auto &value : cell) {
+      std::cout << value << " ";
+    }
+    std::cout << std::endl;
+  }
 #endif
 
-  m_u_stoch.resize(m_stoch_num_cells);
-  m_stoch_mesh.resize(m_stoch_num_cells);
   /* --------- End Step 1 ------------- */
 
-  /*
-   * Step 2: Create a "global / flattened" stochastic mesh.
-   * I don't think we need to do this, instead we can just create a separate
-   * function that gives us what we want from the grid. 
-   */
-
-  // Fill in flattened m_stoch_mesh
-  for (int vec_idx = 0; vec_idx < m_stoch_var_grid.size(); ++vec_idx) {
-    for (int local_idx = 0; local_idx < m_stoch_var_grid[vec_idx].size();
-         ++local_idx) {
-      const int global_idx = toGlobalIndex(m_stoch_var_grid, vec_idx, local_idx);
-      m_stoch_mesh[global_idx] = m_stoch_var_grid[vec_idx][local_idx];
-    }
-  }
-
-  // Test the flattened mesh
-#ifdef DEBUG_SFVM
-  std::cout << "Ouputting m_stoch_mesh values: ";
-  for (const auto &value : m_stoch_mesh) {
-    std::cout << value << " ";
-  }
-  std::cout << '\n';
-#endif
-
-  /* --------- End Step 2 ------------- */
-  
   /***********************************************************************/
 
   if (g_inputdeck.get< tag::cmd, tag::chare >() ||
@@ -366,15 +395,11 @@ DG::box( tk::real v, const std::vector< tk::real >& )
   // Store user-defined box IC volume
   d->Boxvol() = v;
 
-  // Create lambda function to modify initial condition
-  // -------------
-  // 
-
-  for (unsigned int stoch_cellIndex = 0; stoch_cellIndex < m_stoch_mesh.size();
+  // Create lambda function to modify initial condition?
+  for (unsigned int stoch_cellIndex = 0; stoch_cellIndex < m_stochastic_grid.size();
        ++stoch_cellIndex) {
 
-    // Get vector index and local index
-    const auto &[v_idx, l_idx] = toLocalIndex(m_stoch_var_grid, stoch_cellIndex);
+    const auto stochastic_cell = m_stochastic_grid[stoch_cellIndex];
 
     // Set initial conditions for all PDEs
     g_dgpde[d->MeshId()].initialize(
@@ -386,13 +411,14 @@ DG::box( tk::real v, const std::vector< tk::real >& )
 
     tk::Fields geo = myGhosts()->m_geoElem;
 
+    // Modify initial condition for density with stochoastic parameters
     for (std::size_t e = 0; e < myGhosts()->m_nunk; ++e) {
-      // Modify initial condition for density with stochoastic parameter
-      if (v_idx == 0) {
-        // Think about making the 0.5 a random variable
-        if (geo(e, 1) < 0.5) {
-          m_u(e, 0) = m_u(e, 0) + 0.1 * m_stoch_mesh[stoch_cellIndex];
-        }
+      
+      auto modifier = 0.;//0.1 * stochastic_cell[0];
+      auto location = stochastic_cell[0];
+
+      if (geo(e, 1) < location) {
+        m_u(e, 0) = m_u(e, 0) + modifier;
       }
     }
 
@@ -1465,9 +1491,8 @@ DG::solve( tk::real newdt )
 
   // std::cout << "m_stage = " << m_stage << std::endl;
 
-  /* FIX ME ??? */
   /* loop over stochastic cells */
-  for (int stoch_cellIndex = 0; stoch_cellIndex < m_stoch_mesh.size(); stoch_cellIndex++) {
+  for (int stoch_cellIndex = 0; stoch_cellIndex < m_stochastic_grid.size(); stoch_cellIndex++) {
     // std::cout << "DG st_cell_ind = " << st_cell_ind << std::endl; 
     // std::cout << "m_stage = " << m_stage << std::endl; 
 
