@@ -395,28 +395,26 @@ DG::box( tk::real v, const std::vector< tk::real >& )
   // Store user-defined box IC volume
   d->Boxvol() = v;
 
-  // Create lambda function to modify initial condition?
-  for (unsigned int stoch_cellIndex = 0; stoch_cellIndex < m_stochastic_grid.size();
-       ++stoch_cellIndex) {
+  // Set initial conditions for all PDEs
+  g_dgpde[d->MeshId()].initialize(
+      m_lhs, myGhosts()->m_inpoel, myGhosts()->m_coord, m_boxelems,
+      d->ElemBlockId(), m_u, d->T(), myGhosts()->m_fd.Esuel().size() / 4);
+  g_dgpde[d->MeshId()].updatePrimitives(m_u, m_lhs, myGhosts()->m_geoElem, m_p,
+                                        myGhosts()->m_fd.Esuel().size() / 4);
+
+  tk::Fields geo = myGhosts()->m_geoElem;
+
+  /* SVFM: Modify initial conditions */
+  for (unsigned int stoch_cellIndex = 0;
+       stoch_cellIndex < m_stochastic_grid.size(); ++stoch_cellIndex) {
 
     const auto stochastic_cell = m_stochastic_grid[stoch_cellIndex];
-
-    // Set initial conditions for all PDEs
-    g_dgpde[d->MeshId()].initialize(
-        m_lhs, myGhosts()->m_inpoel, myGhosts()->m_coord, m_boxelems,
-        d->ElemBlockId(), m_u, d->T(), myGhosts()->m_fd.Esuel().size() / 4);
-    g_dgpde[d->MeshId()].updatePrimitives(m_u, m_lhs, myGhosts()->m_geoElem,
-                                          m_p,
-                                          myGhosts()->m_fd.Esuel().size() / 4);
-
-    tk::Fields geo = myGhosts()->m_geoElem;
+    const auto modifier = 0.;
+    const auto location = stochastic_cell[0];
 
     // Modify initial condition for density with stochoastic parameters
     for (std::size_t e = 0; e < myGhosts()->m_nunk; ++e) {
       
-      auto modifier = 0.;//0.1 * stochastic_cell[0];
-      auto location = stochastic_cell[0];
-
       if (geo(e, 1) < location) {
         m_u(e, 0) = m_u(e, 0) + modifier;
       }
@@ -1649,8 +1647,10 @@ DG::solve( tk::real newdt )
   /***************************************************************************/
   /*        For Stochastic Finite Volume Method (SFVM)                       */
 
-  /* Calculate expectation value and variance */
-  // TODO : Include proper weights instead of assuming uniform distribution
+  /*
+   * Calculate expectation value and variance
+   * TODO : Include proper weights instead of assuming uniform distribution
+   */
 
   // Compute expected values
   auto m_u_expected = m_u - m_u; // FIXME?
