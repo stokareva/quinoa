@@ -34,6 +34,8 @@
 #include "ChareStateCollector.hpp"
 #include "PDE/MultiMat/MultiMatIndexing.hpp"
 
+#include <fstream>
+
 #define DEBUG_SFVM
 
 namespace inciter {
@@ -1652,24 +1654,32 @@ DG::solve( tk::real newdt )
    * TODO : Include proper weights instead of assuming uniform distribution
    */
 
-  // Compute expected values
+  // Compute expected values and variance
   auto m_u_expected = m_u - m_u; // FIXME?
+  auto m_u_variance = m_u - m_u; // fixme?
+
   for (const auto &entry : m_u_stoch) {
     m_u_expected += entry;
+    m_u_variance += entry * entry;
   }
   m_u_expected *= 1. / m_u_stoch.size();
-  m_u = m_u_expected;
+  m_u_variance *= 1. / m_u_stoch.size();
 
-#if 0 
-  // Compute variance 
-  auto m_u_variance = m_u - m_u; // fixme?
-  for (const auto &entry : m_u_stoch[0]) {
-    m_u_variance += (entry - m_u_expected) * (entry - m_u_expected);
+  m_u_variance -= m_u_expected * m_u_expected;
+
+  // Output m_u_variance to a file
+  std::ofstream outFile("variance_output.txt");
+  if (outFile.is_open()) {
+    outFile << "m_u_variance: " << m_u_variance << std::endl;
+    outFile.close();
+  } else {
+    std::cerr << "Unable to open file for writing variance" << std::endl;
   }
-  m_u_variance *= 1. / m_u_stoch[0].size();
+
+   // Replace solution with expected values
+  m_u = m_u_expected;
   /************************************/
  
-#endif
 }
 
 void
